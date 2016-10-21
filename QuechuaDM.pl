@@ -1,196 +1,182 @@
 #!/usr/bin/perl
 
+# This is an attempt at a Distributed Morphology approach to Quechua.
+# Instead of having the computer sort through the rules, I'll hard code them in.
+
 use strict;
 use warnings;
 use feature 'say';
 use Data::Dumper;
 
-my @persons = qw(1S 1PE 1PI 2S 2P 3S 3P);
-my @tenses  = qw(past pres fut);
+my @subjects = qw(1S 1PI 2S 2P 3S 3P); # 1S 1PE 1PI 2S 2P 3S 3P
+my @objects  = qw(1S 1PE 2S 2P 3S 3P);  # 1S 1PE 1PI 2S 2P 3S 3P
+my @tenses   = qw(past pres); # past fut
 
+# Block 1
+my %rqa = ( 	'conditions' => { 
+					'tense'  => {  past => 1, }, },
+		  		'environment' => undef,
+		  		'stem' => 'rqa' );
+my @pastTense = (\%rqa);
+
+# Block 1
+my %wa = ( 		'conditions' => { 
+					'obj'  => {  1 => 1, }, },
+		  		'environment' => undef,
+		  		'stem' => 'wa' );
+my %su = (  	'conditions' => { 
+					'subj' => { 1  =>  -1, 
+								2  =>  -1, },
+			 		'obj'  => { 2  =>   1, }, },
+		    	'environment' => undef,
+		   		'stem' => 'su' );
+my @singularObjects = (\%wa, \%su);
+
+# Block 2
+my %nki = ( 	'conditions' => { 
+					'subj'  => { 1 => -1,
+								 2 =>  1, }, },
+		  		'environment' => undef,
+		  		'stem' => 'nki' );
+# this becomes "ni" word-finally in the phonological rules
+my %y = (   	'conditions' => { 
+					'subj'  => { 1 =>  1,
+							     2 => -1, }, },
+		     	'environment' => undef,
+		     	'stem' => 'y' );
+		    
+my %n = (  		'conditions' => { },
+				'environment' => undef,
+		    	'stem' => 'n' );
+my @personSubj = (\%nki, \%y, \%n);
+
+# Block 3
+my %ki = (  	'conditions' => { 
+			 		'obj'  => { 2  => 1, }, },
+		    	'environment' => undef,
+		   		'stem' => 'ki' );
+my @otherObjects = ( \%ki);
+		    
+# Block 4
+my %ku1 = (  	'conditions' => { 
+			 		'obj'  => { 1  =>  1,
+			 					pl => 1, }, },
+		    	'environment' => undef,
+		   		'stem' => 'ku' );
+my %chis1 = (  	'conditions' => { 
+			 		'subj'  => { 2  => 1, 
+			 					 pl => 1, }, },
+		    	'environment' => undef,
+		   		'stem' => 'chis' );
+my %chis2 = (  	'conditions' => { 
+			 		'obj'  => { 2  => 1, , 
+			 				    pl => 1, }, },
+		    	'environment' => undef,
+		   		'stem' => 'chis' );
+my %ku2 = (  	'conditions' => { 
+			 		'subj'  => { pl => 1, }, },
+		    	'environment' => undef,
+		   		'stem' => 'ku' );
+		    
+my @numberSubj = (\%ku1, \%chis1, \%chis2, \%ku2);
+
+my @blocks = (\@pastTense, \@singularObjects, \@personSubj, \@otherObjects, \@numberSubj); 
+ 
+#say Dumper \@blocks;
+ 
 for my $tense (@tenses) {
-	for my $subject (@persons) {
-		for my $object (@persons) {
-		
-			next unless &illogical($subject, $object);
-		
-			my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl) = parameters($subject, $object);
-			
-			my $past = my $fut = -1;
-			if    ($tense eq 'past') { $past = 1 }
-			elsif ($tense eq 'fut')  { $fut  = 1 }
+	#say $tense;
+	for my $subject (@subjects) {
+		#say "\t$subject";
+		for my $object (@objects) {
+			next unless logical($subject, $object);
+			my %cell = (
+				'tense' => &tenseParameters($tense),
+				'subj'  => &personParameters($subject),
+				'obj'   => &personParameters($object),
+				
+				'suffixes' => [],
+			);
 			
 			my $guess = "";
 			
-			my @p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			
-			
-			# Impoverishment rules
-			if (plus_sMe(@p) && plus_oYou(@p) && plus_sPl(@p) && plus_oPl(@p) && plus_past(@p)) {
-				$oPl = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			if (minus_sMe(@p) && plus_oYou(@p) && plus_sPl(@p) && minus_oPl(@p) && plus_past(@p)) {
-				$sPl = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			
-						
-			# Just take care of the exceptions first
-			if (plus_oMe(@p) && plus_sYou(@p) && minus_sPl(@p) && plus_oPl(@p) && plus_past(@p)) {
-				$guess .= "warqankichis";
-				$oMe = $sYou = $sPl = $oPl = $past = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}			
-			if (plus_sMe(@p) && minus_oYou(@p) && minus_sPl(@p) && plus_oPl(@p) && plus_fut(@p)) {
-				$guess .= "saqku";
-				$sMe = $oYou = $sPl = $oPl = $fut = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			
-			if (plus_sMe(@p) && plus_oYou(@p) && minus_sPl(@p) && plus_oPl(@p) && plus_fut(@p)) {
-				$guess .= "sqaykiku";
-				$sMe = $oYou = $sPl = $oPl = $fut = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			
-			
-			
-			# Regular rules
-			
-						
-			if (plus_oMe(@p)) {	# A
-				$guess .= "wa";
-				$oMe = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			
- 			if (plus_past(@p)) { # B
- 				$guess .= "rqa";
- 				$past = undef;
- 				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
- 			}
- 			
-  			if (minus_sMe(@p) && minus_oMe(@p) && plus_oYou(@p)) { # C
-  				$guess .= "sunki";
-  				$sMe = $oMe = undef;
-  				$oYou = "s1"; # secondary
-  				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-  			}
-  			
-   			if (plus_sMe(@p) && plus_sYou(@p) && plus_fut(@p)) { # D
-   				$guess .= "sun";
-   				$sMe = $fut = undef;
-   				$sYou = 's1'; # secondary
-  				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-   			}
-   			# subset of D
-   			if (plus_sMe(@p) && plus_sYou(@p)) { # R
-   				$guess .= "n";
-   				$sMe = undef;
-   				$sYou = 's1'; # secondary
-  				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-   			}
-   			if (plus_sMe(@p) && minus_sYou(@p) && plus_oYou(@p) && plus_sPl(@p) && minus_fut(@p)) { # P
- 				$guess .= "yki";
- 				$sMe = $sYou = $sPl = $fut = undef;
- 				$oYou = "s1"; # secondary
- 				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past); 
- 			}
- 			# subset of # P
-   			if (plus_sMe(@p) && minus_sYou(@p) && plus_sPl(@p) && minus_fut(@p)) { # Q
- 				$guess .= "y";
- 				$sMe = $sYou = $sPl = $fut = undef;
- 				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past); 
- 			}
-  			
-   			if (plus_sMe(@p) && minus_oYou(@p) && minus_sPl(@p) && minus_fut(@p)) { # J
-   				$guess .= "ni";
-   				$sMe = $oYou = $sPl = $fut = undef;
-  				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-   			}
-   			
-			if (plus_sMe(@p) && plus_oYou(@p) && plus_fut(@p)) { # E
-				$guess .= "sqayki";
-				$sMe = $fut = undef;
-				$oYou = "s1"; # secondary
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			# subset of E->F
-			if (plus_sMe(@p) && plus_oYou(@p)) { # N
-				$guess .= "yki";
-				$sMe = undef;
-				$oYou = "s1"; # secondary
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
+BLOCK:		for my $block (@blocks) {
 				
-			if (minus_sMe(@p) && plus_sYou(@p)) { # L
-				$guess .= "nki";
-				$sMe = undef;
-				$sYou = 's1'; # secondary
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			
-			if (plus_sMe(@p) && plus_sPl(@p) && plus_fut(@p)) {	# G
-				$guess .= "sayku";
-				$sMe = $sPl = $fut = undef; # sMe = secondary (needed in rule K)
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			
-			# Subset of E->F, G
-			if (plus_sMe(@p) && plus_fut(@p)) { # I 
-				$guess .= "saq";
-				$sMe = $sPl = $fut = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
+RULE: 			for my $rule (@$block) {
+ 					my %rule = %$rule;
+ 					#say "\t\t".$rule{stem};
+
+ 					for my $cond (keys $rule{conditions}) {
+ 						#say "\t\t\t$cond";
+ 				
+						# I don't remember what this is for.
+ 						next unless $cell{$cond};
+ 				
+ 						for my $person (keys $rule{conditions}{$cond}) {
+ 							#say "\t\t$person = ".$rule{conditions}{$cond}{$person};
 					
-			if (minus_sMe(@p) && minus_sYou(@p) && minus_oYou(@p) && plus_fut(@p)) { # M
-				$guess .= "nqa";
-				$sMe = $sYou = $oYou = $sPl = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			
-			if (minus_sMe(@p) && minus_oYou(@p) && minus_past(@p)) { # S
-				$guess .= "n";
-				$sMe = $oYou = $past = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			if (plus_oYou(@p) && plus_oPl(@p) && plus_fut(@p)) { # H
-				$guess .= "sunchis";
-				$oPl = $fut = undef;
-				$oYou = "s1"; # secondary
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			# subset of H
-			if (plus_oYou(@p) && plus_oPl(@p)) { # T
-				$guess .= "nchis";
-				$oPl = undef;
-				$oYou = "s1"; # secondary
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			if (sec_sYou(@p) && plus_sPl(@p)) { # @
-				$guess .= "chis";
-				$sYou = $sPl = undef;
-				@p = ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past);
-			}
-			
-			# Impoverish [+you] → Ø / [+me.nom +pl.nom +you.acc +pl.acc +past]
-			# Impoverish [+you] → Ø / [+me.nom +sg.nom +you.acc +pl.acc +fut]
-			if (sec_oYou(@p) && plus_sMe(@p)) {
-				#$guess .= "@@";
-			}
-			
-			if (sec_oYou(@p) && plus_oPl(@p)) {
-				#$guess .= "chis";
+							#say $cell{$cond}{$person};
+							
+							if ($person =~ /past|fut/ && $cell{$cond}{$person} eq $rule{conditions}{$cond}{$person}) {
+								# This is a tense condition. Good. 
+								# The only difference between this and the condition below 
+								#   is 'eq' instead of '=='.
+							
+ 							} elsif ($cell{$cond}{$person} == $rule{conditions}{$cond}{$person}) {
+ 								# So far, the rule has matched this condition.
+ 								# See if it matches all of them.
+ 							} else {
+ 								#say "\t\t\tNo match. Moving on to next rule";
+ 								next RULE;
+ 							}
+ 						} #end PERS loop
 				
-			}
-
-		
+						# If it's made it this far, then this cell matches this condition.
+ 						# Now see if it matches the entire rule.
+ 						# No conditional statement here because it'll automatically jump to the next rule if
+ 						#   this cell doesn't meet the next condition.
+ 				
+ 						# say "\t\t\tThis cell matches this condition!";
+ 				
+ 					} # end COND loop.
+ 			
+ 					# If it's made it this far, then this cell has matched all the conditions for this rule.
+ 					#say "\t\t\tThis cell matches this rule!";
+ 			
+ 					$guess .= $rule{stem};
+ 					push $cell{suffixes}, $rule;
+ 					next BLOCK;
+ 			
+					# print Dumper \%cell;
+ 			
+				} # and RULE loop.
 			
-
-
-			printFeatures(@p);
-		
+			
+			} # end BLOCK loop.
+			
+ 			
+			# Phonological Rules
+			
+			# Change word final "y" to "ni".
+			my $numberOfSuffixes = $#{$cell{suffixes}};
+			if ($numberOfSuffixes >= 0) {
+				# This is the wordiest way of doing this ever, but this accesses the last element in the list of suffixes's stem 
+				my $lastStem = ${$cell{suffixes}}[$numberOfSuffixes]{stem};
+				
+				if ($lastStem eq 'y') {
+					#say "\$guess:  $guess";
+					$guess =~ s/y\b/ni/;
+				}
+			}
+			
+			# Switch rqa and wa (= 'wa' must follow the root)
+			$guess =~ s/rqawa/warqa/;
+			
+			
+			
+			
+			
+			
 			# Print the correct ones.
 			my $correct = &correct($tense, $subject, $object);		
 			my $score = &score($correct, $guess);
@@ -199,238 +185,15 @@ for my $tense (@tenses) {
 		
 			my $format = "%-6s%-10s%-13s%-13s%-13s%-1s\n";
 			printf ($format, $tense, "$subject->$object", $guess, $remaining, $correct, $score);
-		
-		}
+ 		
+		} # end OBJ loop	
 		print "\n";
-	}
-}
+	} # end SUBJ loop
+	print "\n";
+} # end TENSE loop;
 
-sub plus_sMe {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $sMe) {
-		return undef;
-	} elsif ($sMe eq '1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub minus_sMe {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $sMe) {
-		return undef;
-	} elsif ($sMe eq '-1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
 
-sub plus_oMe {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $oMe) {
-		return undef;
-	} elsif ($oMe eq '1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub minus_oMe {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $oMe) {
-		return undef;
-	} elsif ($oMe eq '-1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-sub plus_sYou {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $sYou) {
-		return undef;
-	} elsif ($sYou eq '1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub minus_sYou {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $sYou) {
-		return undef;
-	} elsif ($sYou eq '-1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub sec_sYou {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $sYou) {
-		return undef;
-	} elsif ($sYou eq 's1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-sub plus_oYou {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $oYou) {
-		return undef;
-	} elsif ($oYou eq '1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub minus_oYou {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $oYou) {
-		return undef;
-	} elsif ($oYou eq '-1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub sec_oYou {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $oYou) {
-		return undef;
-	} elsif ($oYou eq 's1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-sub plus_sPl {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $sPl) {
-		return undef;
-	} elsif ($sPl eq '1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub minus_sPl {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $sPl) {
-		return undef;
-	} elsif ($sPl eq '-1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-sub plus_oPl {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $oPl) {
-		return undef;
-	} elsif ($oPl eq '1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub minus_oPl {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $oPl) {
-		return undef;
-	} elsif ($oPl eq '-1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-sub plus_past {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $past) {
-		return undef;
-	} elsif ($past eq '1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub minus_past {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $past) {
-		return undef;
-	} elsif ($past eq '-1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-sub plus_fut {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $fut) {
-		return undef;
-	} elsif ($fut eq '1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-sub minus_fut {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	if (!defined $fut) {
-		return undef;
-	} elsif ($fut eq '-1') {
-		return 1;
-	} else {
-		return undef;
-	}
-}
-
-sub printFeatures {
-	my ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl, $fut, $past) = @_;
-	
-	print "sMe=", p($sMe), " ";
-	print "oMe=", p($oMe), " ";
-	print "sYou=", p($sYou), " ";
-	print "oYou=", p($oYou), " ";
-	print "sPl=", p($sPl), " ";
-	print "oPl=", p($oPl), " ";
-	print "fut=", p($fut), " ";
-	print "past=", p($past), "\t";
-
-	sub p {
-		my $f = shift;
-		if ($f) { $f eq '1' ? "+1" : $f } 
-		else { " X" }
-	}
-}
-
-sub illogical {
+sub logical {
 	my ($subject, $object) = @_;
 	
 	# No reflexives
@@ -456,29 +219,6 @@ sub illogical {
 	
 	# If we're still here, return a good value;
 	return 1;
-}
-sub parameters {
-	my ($subject, $object) = @_;
-	
-	my $sMe = my $sYou = my $sPl = my $oMe = my $oYou = my $oPl = -1;
-	
-	if    ($subject eq "1S" ) { $sMe           =1 }
-	elsif ($subject eq "1PE") { $sMe      =$sPl=1 }
-	elsif ($subject eq "1PI") { $sMe=$sYou=$sPl=1 }
-	elsif ($subject eq "2S" ) { 	 $sYou     =1 }
-	elsif ($subject eq "2P" ) {      $sYou=$sPl=1 }
-	elsif ($subject eq "3S" ) {                   }
-	elsif ($subject eq "3P" ) {            $sPl=1 }
-	
-	if    ($object eq "1S" ) { $oMe           =1 }
-	elsif ($object eq "1PE") { $oMe      =$oPl=1 }
-	elsif ($object eq "1PI") { $oMe=$oYou=$oPl=1 }
-	elsif ($object eq "2S" ) { 	    $oYou     =1 }
-	elsif ($object eq "2P" ) {      $oYou=$oPl=1 }
-	elsif ($object eq "3S" ) {                   }
-	elsif ($object eq "3P" ) {            $oPl=1 }
-		
-	return ($sMe, $sYou, $sPl, $oMe, $oYou, $oPl);
 }
 sub correct {
 	my ($tense, $subject, $object) = @_;
@@ -671,6 +411,65 @@ sub correct {
 	
 	return $correct;
 }
+
+
+sub tenseParameters {
+	my $tense = shift;
+	
+	my %hash;
+	
+	if ($tense eq 'past') {
+		$hash{past} =  1;
+		$hash{fut}  = -1;
+	} elsif ($tense eq 'fut') {
+		$hash{past} = -1;
+		$hash{fut}  =  1;
+	} else {
+		$hash{past} = -1;
+		$hash{fut}  =  1;
+	}
+	
+	return \%hash;
+}
+sub personParameters {
+	my $person = shift;
+	
+	my %hash;
+	if ($person eq '1S') {
+		%hash = (1  =>  1, 
+				 2  => -1,
+				 pl => -1);
+	} elsif ($person eq '1PE') {
+		%hash = (1  =>  1, 
+				 2  => -1,
+				 pl =>  1);	
+	} elsif ($person eq '1PI') {
+		%hash = (1  =>  1, 
+				 2  =>  1,
+				 pl =>  1);	
+	} elsif ($person eq '2S') {
+		%hash = (1  => -1, 
+				 2  =>  1,
+				 pl => -1);	
+	} elsif ($person eq '2P') {
+		%hash = (1  => -1, 
+				 2  =>  1,
+				 pl =>  1);	
+	} elsif ($person eq '3S') {
+		%hash = (1  => -1, 
+				 2  => -1,
+				 pl => -1);	
+	} elsif ($person eq '3P') {
+		%hash = (1  => -1, 
+				 2  => -1,
+				 pl =>  1);	
+	}
+	
+	$hash{name} = $person;
+	
+	return \%hash;
+}
+
 sub score {
 	my ($correct, $guess) = @_;
 	
